@@ -3,15 +3,15 @@ import pandas as pd
 # IMPORTANT: DO NOT USE ANY OTHER 3RD PARTY PACKAGES
 # (math, random, collections, functools, etc. are perfectly fine)
 
-
 class DecisionTree:
     
-    def __init__():
+    def __init__(self, max_depth=None):
         # NOTE: Feel free add any hyperparameters 
         # (with defaults) as you see fit
-        pass
+        self.max_depth = max_depth
+        self.tree = None
     
-    def fit(self, X, y):
+    def fit(self, X, y, depth=0):
         """
         Generates a decision tree for classification
         
@@ -21,8 +21,7 @@ class DecisionTree:
                 to the features.
             y (pd.Series): a vector of discrete ground-truth labels
         """
-        # TODO: Implement 
-        raise NotImplementedError()
+        self.tree = self._build_tree(X, y, depth)
     
     def predict(self, X):
         """
@@ -38,8 +37,10 @@ class DecisionTree:
         Returns:
             A length m vector with predictions
         """
-        # TODO: Implement 
-        raise NotImplementedError()
+        predictions = []
+        for _, row in X.iterrows():
+            predictions.append(self._predict_row(self.tree, row))
+        return pd.Series(predictions, index=X.index)
     
     def get_rules(self):
         """
@@ -59,8 +60,77 @@ class DecisionTree:
             ...
         ]
         """
-        # TODO: Implement
-        raise NotImplementedError()
+        rules = []
+        self._get_rules_recursive(self.tree, [], rules)
+        return rules
+
+
+    def _build_tree(self, X, y, depth):
+        if depth == self.max_depth or y.nunique() == 1:
+            return y.mode().iloc[0]  # Return the most common class label
+
+        if len(X.columns) == 0:
+            return y.mode().iloc[0]  # Return the most common class label
+
+        best_attribute, best_split = self._find_best_split(X, y)
+        if best_attribute is None:
+            return y.mode().iloc[0]  # Return the most common class label
+
+        tree = {best_attribute: {}}
+        for value, subset in best_split.items():
+            tree[best_attribute][value] = self._build_tree(subset[0], subset[1], depth + 1)
+
+        return tree
+    
+
+    def _find_best_split(self, X, y):
+        entropy_before_split = self._entropy(y)
+        best_info_gain = 0
+        best_attribute = None
+        best_split = None
+
+        for attribute in X.columns:
+            values = X[attribute].unique()
+            subsets = {}
+            for value in values:
+                subsets[value] = (X[X[attribute] == value], y[X[attribute] == value])
+
+            entropy_after_split = sum(len(subset[1]) / len(y) * self._entropy(subset[1]) for subset in subsets.values())
+            info_gain = entropy_before_split - entropy_after_split
+
+            if info_gain > best_info_gain:
+                best_info_gain = info_gain
+                best_attribute = attribute
+                best_split = subsets
+
+        return best_attribute, best_split
+    
+
+    def _entropy(self, y):
+        value_counts = y.value_counts()
+        probabilities = value_counts / len(y)
+        return -np.sum(probabilities * np.log2(probabilities))
+    
+
+    def _predict_row(self, tree, row):
+        if isinstance(tree, str):  # Leaf node
+            return tree
+        else:
+            attribute = list(tree.keys())[0]
+            value = row[attribute]
+            if value in tree[attribute]:
+                return self._predict_row(tree[attribute][value], row)
+            else:
+                return None  # Value not found in the tree
+
+
+    def _get_rules_recursive(self, tree, rule, rules):
+        if isinstance(tree, str):  # Leaf node
+            rules.append((rule, tree))
+        else:
+            attribute = list(tree.keys())[0]
+            for value in tree[attribute]:
+                self._get_rules_recursive(tree[attribute][value], rule + [(attribute, value)], rules)
 
 
 # --- Some utility functions 
@@ -101,6 +171,4 @@ def entropy(counts):
     probs = counts / counts.sum()
     probs = probs[probs > 0]  # Avoid log(0)
     return - np.sum(probs * np.log2(probs))
-
-
 
